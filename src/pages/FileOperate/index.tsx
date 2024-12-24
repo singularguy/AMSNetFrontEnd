@@ -7,7 +7,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css'; // 引入Bootstrap
 import { createNode } from '@/pages/GraphOperate/Components/apiFunctions';
 
-// 引入CSS文件
+// 引入CSS文件lt
+
 import './Styles/Textarea.css';
 import './Styles/Canvas.css';
 import './Styles/Button.css';
@@ -1512,57 +1513,58 @@ const FileOperate: React.FC<FileOperateProps> = ({}) => {
                     style={{ width: '300px', height: '150px', resize: 'both' }}
                 />
               </div>
-              <div>
-                <div>{`Class: ${currentClassLabelToShow} `}</div>
-              </div>
+              {/*<div>*/}
+              {/*  <div>{`Class: ${currentClassLabelToShow} `}</div>*/}
+              {/*</div>*/}
               {/* 解析后的 JSON 内容显示在右侧 */}
-              <Card>
-              <div style={{ width: 600, marginTop: '20px', maxHeight: '300px', overflowY: 'auto' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                  <Typography.Title level={4}>local: </Typography.Title>
-                  {parsedJsonContent && (
-                      <Row gutter={16}>
-                        <Col span={12}>
-                          <Typography.Text strong>buildingBlocks:</Typography.Text>
-                          <ul>
-                            {Object.entries(parsedJsonContent.local.buildingBlocks).map(([name, values]) => (
-                                <li key={name}>
-                                  <Typography.Text>{name}:</Typography.Text>
-                                  <ul>
-                                    {values.map((value, index) => (
-                                        <li key={index}>{value}</li>
-                                    ))}
-                                  </ul>
-                                </li>
-                            ))}
-                          </ul>
-                        </Col>
-                        <Col span={12}>
-                          <Typography.Text strong>constants:</Typography.Text>
-                          <ul>
-                            {Object.entries(parsedJsonContent.local.constants).map(([name, values]) => (
-                                <li key={name}>
-                                  <Typography.Text>{name}:</Typography.Text>
-                                  <ul>
-                                    {values.map((value, index) => (
-                                        <li key={index}>{value}</li>
-                                    ))}
-                                  </ul>
-                                </li>
-                            ))}
-                          </ul>
-                        </Col>
-                      </Row>
-                  )}
-                </div>
-              </div>
-              </Card>
+              {/*<Card>*/}
+              {/*<div style={{ width: 600, marginTop: '20px', maxHeight: '300px', overflowY: 'auto' }}>*/}
+              {/*  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>*/}
+              {/*    <Typography.Title level={4}>local: </Typography.Title>*/}
+              {/*    {parsedJsonContent && (*/}
+              {/*        <Row gutter={16}>*/}
+              {/*          <Col span={12}>*/}
+              {/*            <Typography.Text strong>buildingBlocks:</Typography.Text>*/}
+              {/*            <ul>*/}
+              {/*              {Object.entries(parsedJsonContent.local.buildingBlocks).map(([name, values]) => (*/}
+              {/*                  <li key={name}>*/}
+              {/*                    <Typography.Text>{name}:</Typography.Text>*/}
+              {/*                    <ul>*/}
+              {/*                      {values.map((value, index) => (*/}
+              {/*                          <li key={index}>{value}</li>*/}
+              {/*                      ))}*/}
+              {/*                    </ul>*/}
+              {/*                  </li>*/}
+              {/*              ))}*/}
+              {/*            </ul>*/}
+              {/*          </Col>*/}
+              {/*          <Col span={12}>*/}
+              {/*            <Typography.Text strong>constants:</Typography.Text>*/}
+              {/*            <ul>*/}
+              {/*              {Object.entries(parsedJsonContent.local.constants).map(([name, values]) => (*/}
+              {/*                  <li key={name}>*/}
+              {/*                    <Typography.Text>{name}:</Typography.Text>*/}
+              {/*                    <ul>*/}
+              {/*                      {values.map((value, index) => (*/}
+              {/*                          <li key={index}>{value}</li>*/}
+              {/*                      ))}*/}
+              {/*                    </ul>*/}
+              {/*                  </li>*/}
+              {/*              ))}*/}
+              {/*            </ul>*/}
+              {/*          </Col>*/}
+              {/*        </Row>*/}
+              {/*    )}*/}
+              {/*  </div>*/}
+              {/*</div>*/}
+              {/*</Card>*/}
             </div>
 
             {/* 右侧：增加节点/属性部分 */}
             <div style={{ width: '50%' }}>
               <Card className="card-style" style={{ width: 400 }}>
-                global:
+                {/*global:*/}
+                功能:
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                   <Input
                       placeholder="节点名称"
