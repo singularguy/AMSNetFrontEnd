@@ -22,6 +22,13 @@ export default [
     name: 'Knowledge Graph',
     // access: 'canUser',
   },
+  {
+    path: '/maskoperate',
+    icon: 'edit',
+    component: './MaskOperate',
+    name: 'Mask Line',
+    // access: 'canUser',
+  },
   // {
   //   path: '/admin',
   //   icon: 'crown',
