@@ -5,8 +5,12 @@ import { saveAs } from 'file-saver';
 import {Card, Button, Input, Row, Col, Space, Popover, Typography, InputNumber, Layout, message, Select} from 'antd';
 import React, { useState, useRef, useEffect } from 'react';
 import 'bootstrap/dist/css/bootstrap.min.css'; // 引入Bootstrap
-import { createNode } from '@/pages/GraphOperate/Components/apiFunctions';
-
+import {
+  createNode, deleteNode, updateNode, findNode,
+  getAllNodes,
+  createRelationship, deleteRelationship, updateRelationship, findRelationship,
+  getAllRelationships
+} from '@/pages/GraphOperate/Components/apiFunctions';
 // 引入CSS文件lt
 
 import './Styles/Textarea.css';
@@ -112,7 +116,7 @@ const FileOperate: React.FC<FileOperateProps> = ({}) => {
   };
 
   const handleCreateNode = async () => {
-    const propertiesObj: { [key: string]: any } = {};
+    const propertiesObj = {};
     nodePropertiesKeys.forEach((key, index) => {
       propertiesObj[key] = nodePropertiesValues[index];
     });
@@ -127,9 +131,53 @@ const FileOperate: React.FC<FileOperateProps> = ({}) => {
 
     const newNode = { name: nodeName, properties: propertiesObj };
 
-    // todo 将newnode解析后放到jsonjsonList[currentIndex].global中
-    await createNode(newNode);
-    // message.success('节点创建成功');
+    try {
+      // 尝试创建节点并检查结果
+      const result = await createNode(newNode);
+      if (result.code !== 0) {
+        // 如果结果代码不是0，打印错误信息并退出函数
+        console.error(`Failed to create node with error code: ${result.code}`);
+        return;
+      }
+
+      // 节点创建成功，执行后续逻辑
+      for (const [key, value] of Object.entries(propertiesObj)) {
+        const nodeName = `${key}_${value}`;
+        try {
+          const relatedNode = await findNode({ name: nodeName });
+          if (!relatedNode) {
+            // 如果没有找到同名节点，创建新节点
+            let newRelatedNode = { name: nodeName, properties: { [key]: value } };
+            await createNode(newRelatedNode);
+            console.log(`Created new node ${newRelatedNode.name} because no existing node shared the ${key} value of ${value}`);
+
+            // 创建新节点与原始节点的关系
+            await createRelationship({
+              name: key, // 关系名称是属性名
+              properties: {
+                fromNode: newNode.name,
+                toNode: newRelatedNode.name
+              }
+            });
+            console.log(`Connected ${newNode.name} to ${newRelatedNode.name} as no node shared the ${key} value of ${value}`);
+          } else {
+            // 如果找到具有相同属性值的节点，创建关系
+            await createRelationship({
+              name: key, // 关系名称是属性名
+              properties: {
+                fromNode: newNode.name,
+                toNode: relatedNode.name
+              }
+            });
+            console.log(`Connected ${newNode.name} to ${relatedNode.name} via property ${key}`);
+          }
+        } catch (error) {
+          console.error(`Error handling property ${key}: ${error}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to create initial node: ${error}`);
+    }
   };
 
   const removeNodeProperty = (index: number) => {

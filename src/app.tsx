@@ -5,6 +5,7 @@ import { history } from '@umijs/max';
 import defaultSettings from '../config/defaultSettings';
 import { AvatarDropdown } from './components/RightContent/AvatarDropdown';
 import { requestConfig } from './requestConfig';
+import FloatWindow from "@/pages/FloatWindow";
 
 const loginPath = '/user/login';
 
@@ -53,6 +54,17 @@ export const layout: RunTimeLayoutConfig = ({ initialState }) => {
     // 自定义 403 页面
     // unAccessible: <div>unAccessible</div>,
     ...defaultSettings,
+
+    // 核心修改点：通过 childrenRender 注入悬浮窗
+    childrenRender: (children) => (
+      <>
+        {/* 主内容区域 */}
+        {children}
+
+        {/* 全局悬浮窗（固定在右下角） */}
+        <FloatWindow />
+      </>
+    )
   };
 };
 

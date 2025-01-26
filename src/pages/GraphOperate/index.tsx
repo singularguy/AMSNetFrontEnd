@@ -9,21 +9,16 @@ import './Styles/customStyles.css';
 import './Styles/Button.css';
 
 import { Button, Card, Input, Layout, message, Space, Typography } from 'antd';
-// 导入可视化组件和数据文件
-// import Neo4jVisualization_toTrash from './Components/Neo4jVisualization_toTrash';
 import Neo4jVisualization from './Components/Neo4jVisualization';
 const { Title } = Typography;
 const { Content } = Layout;
 
-//
-
-// 定义node的接口，使其与API函数中的类型定义相匹配
 interface Node {
+  id: string; // 确保包含节点的ID
   name: string;
   properties: { [key: string]: any };
 }
 
-// 定义relationship的接口，使其与API函数中的类型定义相匹配
 interface Relationship {
   name: string;
   properties: { [key: string]: any };
@@ -96,15 +91,63 @@ const GraphOperate = () => {
     setRelationshipPropertiesValues(newValues);
   };
 
-  // 创建节点
+  // 创建节点并根据属性查找或创建相关节点
   const handleCreateNode = async () => {
-    const propertiesObj: { [key: string]: any } = {};
+    const propertiesObj = {};
     nodePropertiesKeys.forEach((key, index) => {
       propertiesObj[key] = nodePropertiesValues[index];
     });
-    const newNode: Node = { name, properties: propertiesObj };
-    await createNode(newNode);
-    setNodeResult(newNode);
+    const newNode = { name, properties: propertiesObj };
+
+    try {
+      // 尝试创建节点并检查结果
+      const result = await createNode(newNode);
+      if (result !== true) {
+        // 如果结果代码不是0，打印错误信息并退出函数
+        console.error(`Failed to create node with error code: ${result}`);
+        return;
+      }
+      // 节点创建成功，设置节点结果
+      setNodeResult(newNode);
+
+      // 遍历节点属性，处理关系创建
+      for (const [key, value] of Object.entries(propertiesObj)) {
+        const nodeName = `${key}_${value}`;
+        try {
+          const relatedNode = await findNode({ name: nodeName });
+          if (!relatedNode) {
+            // 如果没有找到同名节点，创建新节点
+            let newRelatedNode = { name: nodeName, properties: { [key]: value } };
+            await createNode(newRelatedNode);
+            console.log(`Created new node ${newRelatedNode.name} because no existing node shared the ${key} value of ${value}`);
+
+            // 创建新节点与原始节点的关系
+            await createRelationship({
+              name: key, // 关系名称是属性名
+              properties: {
+                fromNode: newNode.name,
+                toNode: newRelatedNode.name
+              }
+            });
+            console.log(`Connected ${newNode.name} to ${newRelatedNode.name} as no node shared the ${key} value of ${value}`);
+          } else {
+            // 如果找到具有相同属性值的节点，创建关系
+            await createRelationship({
+              name: key, // 关系名称是属性名
+              properties: {
+                fromNode: newNode.name,
+                toNode: relatedNode.data.name
+              }
+            });
+            console.log(`Connected ${newNode.name} to ${relatedNode.data.name} via property ${key}`);
+          }
+        } catch (error) {
+          console.error(`Error handling property ${key}: ${error}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to create initial node: ${error}`);
+    }
   };
 
   // 删除节点
@@ -119,7 +162,7 @@ const GraphOperate = () => {
       propertiesObj[key] = nodePropertiesValues[index];
     });
 
-    const updatedNode: Node = { name, properties: propertiesObj };
+    const updatedNode: Node = { id: '', name, properties: propertiesObj };
     await updateNode(updatedNode);
     setNodeResult(updatedNode);
   };
@@ -139,12 +182,12 @@ const GraphOperate = () => {
   // 获取所有节点
   const handleGetAllNodes = async () => {
     const result: Node[] = await getAllNodes({ includeProperties: true });
-    setAllNodes(result);
+    setAllNodes(result.data);
   };
 
   // 创建关系
   const handleCreateRelationship = async () => {
-    const propertiesObj: { [byte: string]: any } = {};
+    const propertiesObj: { [key: string]: any } = {};
     relationshipPropertiesKeys.forEach((key, index) => {
       propertiesObj[key] = relationshipPropertiesValues[index];
     });
@@ -160,7 +203,7 @@ const GraphOperate = () => {
 
   // 更新关系
   const handleUpdateRelationship = async () => {
-    const propertiesObj: { [byte: string]: any } = {};
+    const propertiesObj: { [key: string]: any } = {};
     relationshipPropertiesKeys.forEach((key, index) => {
       propertiesObj[key] = relationshipPropertiesValues[index];
     });
@@ -177,7 +220,7 @@ const GraphOperate = () => {
   // 获取所有关系
   const handleGetAllRelationships = async () => {
     const result: Relationship[] = await getAllRelationships({ includeProperties: true });
-    setAllRelationships(result);
+    setAllRelationships(result.data);
   };
 
   // 获取整张图 先执行 获取节点 再执行获取关系
@@ -187,94 +230,94 @@ const GraphOperate = () => {
   };
 
   return (
-      <Layout>
-        <Content>
-          <Card style={{ width: 1700 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: 1700 }}>
-              {/* 左侧：节点CRUD操作 */}
-              <div style={{ width: '48%' }}>
-                <Title level={2}>节点CRUD操作</Title>
-                <Space direction="vertical">
-                  <Input
-                    placeholder="节点名称"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <div>
-                    {nodePropertiesKeys.map((key, index) => (
-                      <div key={index} style={{ display: 'flex', marginBottom: '5px' }}>
-                        <Input
-                          placeholder="Key"
-                          value={key}
-                          onChange={(e) => handleUpdateNodeProperty(index, e.target.value, nodePropertiesValues[index])}
-                        />
-                        <Input
-                          placeholder="Value"
-                          value={nodePropertiesValues[index]}
-                          onChange={(e) => handleUpdateNodeProperty(index, nodePropertiesKeys[index], e.target.value)}
-                        />
-                        <Button className="button-style" onClick={() => handleRemoveNodeProperty(index)}>删除</Button>
-                      </div>
-                    ))}
-                    <Button className="button-style" onClick={handleAddNodeProperty}>添加节点属性</Button>
-                  </div>
-                  <div>
-                    <Button className="button-style" onClick={handleCreateNode}>创建节点</Button>
-                    <Button className="button-style" onClick={handleDeleteNode}>删除节点</Button>
-                    <Button className="button-style" onClick={handleUpdateNode}>更新节点</Button>
-                    <Button className="button-style" onClick={handleFindNode}>查询节点</Button>
-                  </div>
-                </Space>
-              </div>
-
-              {/* 右侧：关系CRUD操作 */}
-              <div style={{ width: '48%' }}>
-                <Title level={2}>关系CRUD操作</Title>
-                <Space direction="vertical">
-                  <Input
-                      placeholder="关系名称"
-                      value={relationshipName}
-                      onChange={(e) => setRelationshipName(e.target.value)}
-                  />
-                  <div>
-                    {relationshipPropertiesKeys.map((key, index) => (
-                        <div key={index} style={{ display: 'flex', marginBottom: '5px' }}>
-                          <Input
-                              placeholder="Key"
-                              value={key}
-                              onChange={(e) => handleUpdateRelationshipProperty(index, e.target.value, relationshipPropertiesValues[index])}
-                          />
-                          <Input
-                              placeholder="Value"
-                              value={relationshipPropertiesValues[index]}
-                              onChange={(e) => handleUpdateRelationshipProperty(index, relationshipPropertiesKeys[index], e.target.value)}
-                          />
-                        </div>
-                    ))}
-                    <Button className="button-style"  onClick={handleAddRelationshipProperty}>添加关系属性</Button>
-                  </div>
-                  <div>
-                    <Button className="button-style"  onClick={handleCreateRelationship}>创建关系</Button>
-                    <Button className="button-style"  onClick={handleDeleteRelationship}>删除关系</Button>
-                    <Button className="button-style"  onClick={handleUpdateRelationship}>更新关系</Button>
-                    <Button className="button-style"  onClick={handleFindRelationship}>查询关系</Button>
-                  </div>
-                </Space>
-              </div>
+    <Layout>
+      <Content>
+        <Card style={{ width: 1700 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', width: 1700 }}>
+            {/* 左侧：节点CRUD操作 */}
+            <div style={{ width: '48%' }}>
+              <Title level={2}>节点CRUD操作A</Title>
+              <Space direction="vertical">
+                <Input
+                  placeholder="节点名称"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <div>
+                  {nodePropertiesKeys.map((key, index) => (
+                    <div key={index} style={{ display: 'flex', marginBottom: '5px' }}>
+                      <Input
+                        placeholder="Key"
+                        value={key}
+                        onChange={(e) => handleUpdateNodeProperty(index, e.target.value, nodePropertiesValues[index])}
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={nodePropertiesValues[index]}
+                        onChange={(e) => handleUpdateNodeProperty(index, nodePropertiesKeys[index], e.target.value)}
+                      />
+                      <Button className="button-style" onClick={() => handleRemoveNodeProperty(index)}>删除</Button>
+                    </div>
+                  ))}
+                  <Button className="button-style" onClick={handleAddNodeProperty}>添加节点属性</Button>
+                </div>
+                <div>
+                  <Button className="button-style" onClick={handleCreateNode}>创建节点</Button>
+                  <Button className="button-style" onClick={handleDeleteNode}>删除节点</Button>
+                  <Button className="button-style" onClick={handleUpdateNode}>更新节点</Button>
+                  <Button className="button-style" onClick={handleFindNode}>查询节点</Button>
+                </div>
+              </Space>
             </div>
 
-            {/* 下半部分：获取整张图的按钮 */}
-            <div style={{ marginTop: '20px', textAlign: 'center' }}>
-              <Button className="button-style"  onClick={handleGetAllGraph}>获取整张图</Button>
+            {/* 右侧：关系CRUD操作 */}
+            <div style={{ width: '48%' }}>
+              <Title level={2}>关系CRUD操作</Title>
+              <Space direction="vertical">
+                <Input
+                  placeholder="关系名称"
+                  value={relationshipName}
+                  onChange={(e) => setRelationshipName(e.target.value)}
+                />
+                <div>
+                  {relationshipPropertiesKeys.map((key, index) => (
+                    <div key={index} style={{ display: 'flex', marginBottom: '5px' }}>
+                      <Input
+                        placeholder="Key"
+                        value={key}
+                        onChange={(e) => handleUpdateRelationshipProperty(index, e.target.value, relationshipPropertiesValues[index])}
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={relationshipPropertiesValues[index]}
+                        onChange={(e) => handleUpdateRelationshipProperty(index, relationshipPropertiesKeys[index], e.target.value)}
+                      />
+                    </div>
+                  ))}
+                  <Button className="button-style" onClick={handleAddRelationshipProperty}>添加关系属性</Button>
+                </div>
+                <div>
+                  <Button className="button-style" onClick={handleCreateRelationship}>创建关系</Button>
+                  <Button className="button-style" onClick={handleDeleteRelationship}>删除关系</Button>
+                  <Button className="button-style" onClick={handleUpdateRelationship}>更新关系</Button>
+                  <Button className="button-style" onClick={handleFindRelationship}>查询关系</Button>
+                </div>
+              </Space>
             </div>
-          </Card>
-
-          {/* 第二行：可视化组件 */}
-          <div style={{ marginTop: '20px' }}>
-            <Neo4jVisualization nodes={allNodes.data} relationships={allRelationships.data} />
           </div>
-        </Content>
-      </Layout>
+
+          {/* 下半部分：获取整张图的按钮 */}
+          <div style={{ marginTop: '20px', textAlign: 'center' }}>
+            <Button className="button-style" onClick={handleGetAllGraph}>获取整张图</Button>
+          </div>
+        </Card>
+
+        {/* 第二行：可视化组件 */}
+        <div style={{ marginTop: '20px' }}>
+          <Neo4jVisualization nodes={allNodes} relationships={allRelationships} />
+        </div>
+      </Content>
+    </Layout>
   );
 };
 

@@ -1,14 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Button, Card, Descriptions, Row, Col } from 'antd';
+import { Card, Descriptions, Image } from 'antd';
 import { Network, DataSet } from 'vis-network/standalone/esm/vis-network';
 import 'vis-network/styles/vis-network.css';
-
-import {
-  createNode, deleteNode, updateNode, findNode,
-  getAllNodes,
-  createRelationship, deleteRelationship, updateRelationship, findRelationship,
-  getAllRelationships
-} from '@/pages/GraphOperate/Components/apiFunctions';
 
 // 定义节点的接口
 interface Node {
@@ -34,19 +27,13 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
   const [selectedNode, setSelectedNode] = useState<Node | null>(null); // 当前选中的节点
   const [selectedLink, setSelectedLink] = useState<Relationship | null>(null); // 当前选中的关系
 
-  const [newRelationshipsToSave, setNewRelationshipsToSave] = useState<Relationship[]>([]); // 用于存储待保存的新关系
-  const [newNodesToSave, setNewNodesToSave] = useState<Node[]>([]); // 用于存储待保存的新节点
-
-  // 将 useEffect 中的逻辑提取成独立函数，并使其异步
-  const initializeGraph = async (nodes: Node[], relationships: Relationship[]): Promise<void> => {
-    console.log('Nodes:', nodes);
-    console.log('Relationships:', relationships);
-
-
-    const excludedProperties = ['annotatedImage', 'ImgName'];
+  useEffect(() => {
+    // 建立一个不作为节点延伸出去的属性名列表
+    const excludedProperties = ['annotatedImage', 'ImgName']
     if (cardRef.current) {
       const container = cardRef.current; // 获取图表容器的 DOM 元素
 
+      // 提取具有相同属性名和属性值的节点，并创建新的节点和边
       const propertyToNodesMap: { [key: string]: Node[] } = {};
       const newNodes: Node[] = [];
       const newRelationships: Relationship[] = [];
@@ -64,8 +51,7 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
         });
       });
 
-      // 为每个属性值创建节点和关系
-      for (const [propertyValue, nodes] of Object.entries(propertyToNodesMap)) {
+      Object.entries(propertyToNodesMap).forEach(([propertyValue, nodes]) => {
         if (nodes.length > 1) {
           const [key, value] = propertyValue.split(':');
           const newNode: Node = {
@@ -79,11 +65,9 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
           const existingNode = newNodes.find(n => n.name === newNode.name && n.properties.belongTo === newNode.properties.belongTo);
           if (!existingNode) {
             newNodes.push(newNode);
-            await createNode(newNode); // 等待创建节点完成
           }
 
-          // 创建关系
-          for (const node of nodes) {
+          nodes.forEach(node => {
             const newRelationship: Relationship = {
               name: key,
               properties: {
@@ -92,9 +76,9 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
               },
             };
             newRelationships.push(newRelationship);
-            await createRelationship(newRelationship); // 等待创建关系完成
-          }
+          });
         } else {
+          // 如果没有重复的属性值，创建一个新的节点并与原始节点相连
           const [key, value] = propertyValue.split(':');
           const newNode: Node = {
             name: propertyValue, // 使用属性名和属性值作为新节点的名称
@@ -102,9 +86,8 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
               belongTo: key
             },
           };
-          await createNode(newNode); // 等待创建节点完成
 
-          // 检查新节点是否已存在
+          // 检查新节点是否已经存在，考虑 name 和 properties.belongTo
           const existingNode = newNodes.find(n => n.name === newNode.name && n.properties.belongTo === newNode.properties.belongTo);
           if (!existingNode) {
             newNodes.push(newNode);
@@ -119,216 +102,237 @@ const Neo4jVisualization: React.FC<Neo4jVisualizationProps> = ({ nodes = [], rel
             },
           };
           newRelationships.push(newRelationship);
-          await createRelationship(newRelationship); // 等待创建关系完成
         }
-      }
+      });
 
       // 将节点数据转换为 vis-network 所需的格式
       const visNodes = new DataSet([
         ...nodes.map(node => ({
-          id: node.name,
-          label: node.name,
-          ...node.properties,
-          shape: 'ellipse',
+          id: node.name, // 使用节点的名称作为 ID
+          label: node.name, // 使用节点的名称作为标签
+          ...node.properties, // 添加节点的其他属性
+          shape: 'ellipse', // 节点的形状为椭圆
+          // 设置颜色为淡蓝色
           color: {
-            background: '#AED6F1',
-            border: '#3498DB',
+            background: '#AED6F1', // 淡蓝色背景
+            border: '#3498DB', // 蓝色边框
             highlight: {
-              background: '#85C1E9',
-              border: '#2980B9',
+              background: '#85C1E9', // 高亮淡蓝色背景
+              border: '#2980B9', // 高亮蓝色边框
             },
           },
-          borderWidth: 2,
+          borderWidth: 2, // 边框宽度
           font: {
-            size: 14,
-            color: '#333333',
+            size: 14, // 字体大小
+            color: '#333333', // 字体颜色
           },
         })),
         ...newNodes.map(node => ({
-          id: `${node.name}-${node.properties.belongTo}`,
-          label: node.name.split(':')[1],
-          ...node.properties,
-          shape: 'box',
+          id: `${node.name}-${node.properties.belongTo}`, // 使用 name 和 belongTo 组合作为 ID
+          label: node.name.split(':')[1], // 使用节点的名称作为标签
+          ...node.properties, // 添加节点的其他属性
+          shape: 'box', // 新节点的形状为矩形
           font: {
-            size: 14,
-            color: '#333333',
-            align: 'middle',
-            vadjust: 0,
+            size: 14, // 字体大小
+            color: '#333333', // 字体颜色
+            align: 'middle', // 文字水平居中
+            vadjust: 0, // 文字垂直居中
           },
+          // 设置颜色为绿色
           color: {
-            background: '#A9DFBF',
-            border: '#27AE60',
+            background: '#A9DFBF', // 淡绿色背景
+            border: '#27AE60', // 绿色边框
             highlight: {
-              background: '#7DCEA0',
-              border: '#1E8449',
+              background: '#7DCEA0', // 高亮淡绿色背景
+              border: '#1E8449', // 高亮绿色边框
             },
           },
-          borderWidth: 2,
+          borderWidth: 2, // 边框宽度
         })),
       ]);
 
-      let edgeIdCounter = 0;
+      // 将关系数据转换为 vis-network 所需的格式
+      let edgeIdCounter = 0; // 用于生成唯一边 ID 的计数器
       const visEdges = new DataSet([
         ...relationships.map(rel => {
-          const sourceNode = nodes.find(node => node.name === rel.properties.fromNode);
-          const targetNode = nodes.find(node => node.name === rel.properties.toNode);
+          const sourceNode = nodes.find(node => node.name === rel.properties.fromNode); // 查找源节点
+          const targetNode = nodes.find(node => node.name === rel.properties.toNode); // 查找目标节点
+
+          // 确保 source 和 target 是有效的节点 ID
           if (sourceNode && targetNode) {
             return {
-              id: `edge-${edgeIdCounter++}`,
-              from: sourceNode.name,
-              to: targetNode.name,
-              label: rel.name,
-              ...rel.properties,
+              id: `edge-${edgeIdCounter++}`, // 使用唯一的 ID
+              from: sourceNode.name, // 使用源节点的名称作为 from
+              to: targetNode.name, // 使用目标节点的名称作为 to
+              label: rel.name, // 使用关系的名称作为标签
+              ...rel.properties, // 添加关系的其他属性
             };
           } else {
+            // 如果找不到对应的节点，跳过该链接
             console.warn(`Skipping relationship ${rel.name} because one or both nodes are missing.`);
             return null;
           }
         }).filter(link => link !== null) as { id: string; from: string; to: string; label: string }[],
         ...newRelationships.map(rel => {
-          const sourceNode = nodes.find(node => node.name === rel.properties.fromNode);
-          const targetNode = newNodes.find(node => node.name === rel.properties.toNode);
+          const sourceNode = nodes.find(node => node.name === rel.properties.fromNode); // 查找源节点
+          const targetNode = newNodes.find(node => node.name === rel.properties.toNode); // 查找目标节点
+
+          // 确保 source 和 target 是有效的节点 ID
           if (sourceNode && targetNode) {
             return {
-              id: `edge-${edgeIdCounter++}`,
-              from: sourceNode.name,
-              to: `${targetNode.name}-${targetNode.properties.belongTo}`,
-              label: rel.name,
-              ...rel.properties,
+              id: `edge-${edgeIdCounter++}`, // 使用唯一的 ID
+              from: sourceNode.name, // 使用源节点的名称作为 from
+              to: `${targetNode.name}-${targetNode.properties.belongTo}`, // 使用目标节点的 name 和 belongTo 组合作为 to
+              label: rel.name, // 使用关系的名称作为标签
+              ...rel.properties, // 添加关系的其他属性
             };
           } else {
+            // 如果找不到对应的节点，跳过该链接
             console.warn(`Skipping relationship ${rel.name} because one or both nodes are missing.`);
             return null;
           }
         }).filter(link => link !== null) as { id: string; from: string; to: string; label: string }[],
       ]);
 
+      // 配置 vis-network
       const data = {
-        nodes: visNodes,
-        edges: visEdges,
+        nodes: visNodes, // 节点数据
+        edges: visEdges, // 关系数据
       };
+
+      // 打印所有的节点和边
+      console.log('Nodes:', visNodes.get());
+      console.log('Edges:', visEdges.get());
 
       const options = {
         interaction: {
-          dragNodes: true,
-          dragView: true,
-          hover: true,
+          dragNodes: true, // 允许拖动节点
+          dragView: true, // 允许拖动视图
+          hover: true, // 允许悬停
         },
         physics: {
-          enabled: true,
+          enabled: true, // 启用物理引擎
           barnesHut: {
-            gravitationalConstant: -200,
-            centralGravity: 0,
-            springLength: 200,
-            springConstant: 0.04,
-            damping: 0.09,
-            avoidOverlap: 0.5,
+            gravitationalConstant: -200, // 重力常数
+            centralGravity: 0, // 中心重力
+            springLength: 200, // 弹簧长度
+            springConstant: 0.04, // 弹簧常数
+            damping: 0.09, // 阻尼
+            avoidOverlap: 0.5, // 避免重叠
           },
         },
         nodes: {
-          shape: 'dot',
-          size: 20,
+          shape: 'dot', // 节点形状为圆点
+          size: 20, // 节点大小
           font: {
-            size: 12,
+            size: 12, // 字体大小
           },
-          borderWidth: 2,
+          borderWidth: 2, // 边框宽度
           color: {
-            background: 'lightgreen',
-            border: 'green',
+            background: 'lightgreen', // 背景颜色
+            border: 'green', // 边框颜色
             highlight: {
-              background: 'lightblue',
-              border: 'blue',
+              background: 'lightblue', // 高亮背景颜色
+              border: 'blue', // 高亮边框颜色
             },
           },
         },
         edges: {
           arrows: {
             to: {
-              enabled: true,
-              scaleFactor: 0.5,
+              enabled: true, // 启用箭头
+              scaleFactor: 1, // 箭头缩放因子
             },
           },
           color: {
-            color: '#848484',
-            highlight: '#848484',
-            hover: '#848484',
+            color: 'gray', // 默认颜色
+            highlight: 'lightblue', // 高亮颜色
           },
           font: {
-            size: 14,
-            align: 'middle',
+            align: 'middle', // 标签对齐方式
           },
         },
       };
 
-      if (networkRef.current) {
-        networkRef.current.destroy(); // 销毁之前的网络实例
-      }
+      // 创建 vis-network 实例
+      const network = new Network(container, data, options);
+      networkRef.current = network;
 
-      networkRef.current = new Network(container, data, options); // 创建新的网络实例
-
-      networkRef.current.on('selectNode', params => {
-        const nodeId = params.nodes[0];
-        const selectedNode = nodes.find(node => node.name === nodeId);
-        setSelectedNode(selectedNode || null);
-      });
-
-      networkRef.current.on('selectEdge', params => {
-        if (params.edges.length > 0) {
-          const edgeId = params.edges[0];
-          const selectedLink = relationships.find(rel => rel.name === edgeId);
-          setSelectedLink(selectedLink || null);
+      // 监听节点点击事件
+      network.on('click', (params) => {
+        if (params.nodes.length > 0) {
+          const nodeId = params.nodes[0]; // 获取点击的节点 ID
+          const node = nodes.find(n => n.name === nodeId) || newNodes.find(n => `${n.name}-${n.properties.belongTo}` === nodeId); // 查找对应的节点
+          if (node) {
+            setSelectedNode(node); // 设置选中的节点
+            setSelectedLink(null); // 清除选中的关系
+          }
+        } else if (params.edges.length > 0) {
+          const edgeId = params.edges[0]; // 获取点击的关系 ID
+          const edge = relationships.find(r => r.name === edgeId) || newRelationships.find(r => r.name === edgeId);
+          if (edge) {
+            setSelectedLink(edge); // 设置选中的关系
+            setSelectedNode(null); // 清除选中的节点
+          }
         }
       });
-    }
-  };
 
-  const handleInitializeGraph = async () => {
-    try {
-      await initializeGraph(nodes, relationships); // 等待初始化完成
-      console.log('Graph initialized');
-    } catch (error) {
-      console.error('Error initializing graph:', error);
+      return () => {
+        network.destroy(); // 销毁 vis-network 实例
+      };
     }
-  };
-
-  useEffect(() => {
-    // 初始化图表时自动加载
-    initializeGraph(nodes, relationships);
   }, [nodes, relationships]);
 
+  // 限制属性显示的长度
+  const truncateString = (str: string, maxLength: number) => {
+    return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
+  };
+
   return (
-    <Row gutter={16}>
-      {/* 左侧的 Card，用来显示图表 */}
-      <Col span={16}>
-        <Card title="Neo4j Visualization">
-          <div ref={cardRef} style={{ width: '100%', height: '600px' }}></div>
-          <Descriptions title="Selected Node" column={2}>
-            {selectedNode && (
-              <>
-                <Descriptions.Item label="Node Name">{selectedNode.name}</Descriptions.Item>
-                <Descriptions.Item label="Properties">
-                  {Object.entries(selectedNode.properties).map(([key, value]) => (
-                    <div key={key}>
-                      {key}: {value}
-                    </div>
-                  ))}
-                </Descriptions.Item>
-              </>
+    <div style={{ height: '100%', width: 1700, display: 'flex', overflow: 'hidden' }}>
+      <Card ref={cardRef} style={{ width:1000, height: 800 }} /> {/* 图表容器 */}
+      <Card style={{ width: 700, height: 800, overflowY: 'auto' }}>
+        {/* 如果选中了节点，显示节点详情 */}
+        {selectedNode && (
+          <Descriptions title="Node Details" bordered>
+            {/* 显示节点的名称，独占一行 */}
+            <Descriptions.Item label="Name" span={2}>
+              {selectedNode.name}
+            </Descriptions.Item>
+            {/*空白占位*/}<Descriptions.Item label="" span={2}>{}</Descriptions.Item>
+            {/* 显示节点的属性，每个属性单独一行并缩进显示 */}
+            {Object.entries(selectedNode.properties).map(([key, value]) => (
+              <Descriptions.Item key={key} label={key} span={2} style={{ paddingLeft: '20px' }}>
+                {truncateString(value, 30)}
+              </Descriptions.Item>
+            ))}
+            {/* 如果节点包含 annotatedImage 属性，显示图片 */}
+            {selectedNode.properties.annotatedImage && (
+              <Descriptions.Item label="Annotated Image" span={2}>
+                <Image src={selectedNode.properties.annotatedImage} />
+              </Descriptions.Item>
             )}
           </Descriptions>
-        </Card>
-      </Col>
-
-      {/* 右侧的 Card，用来放按钮 */}
-      <Col span={8}>
-        <Card title="Actions">
-          <Button type="primary" onClick={handleInitializeGraph}>
-            Initialize Graph
-          </Button>
-        </Card>
-      </Col>
-    </Row>
+        )}
+        {/* 如果选中了链接，显示链接详情 */}
+        {selectedLink && (
+          <Descriptions title="Link Details" bordered>
+            {/* 显示链接的名称，独占一行 */}
+            <Descriptions.Item label="Name" span={2}>
+              {selectedLink.name}
+            </Descriptions.Item>
+            {/*空白占位*/}<Descriptions.Item label="" span={2}>{}</Descriptions.Item>
+            {/* 显示链接的属性，每个属性单独一行并缩进显示 */}
+            {Object.entries(selectedLink.properties).map(([key, value]) => (
+              <Descriptions.Item key={key} label={key} span={2} style={{ paddingLeft: '20px' }}>
+                {truncateString(value, 30)}
+              </Descriptions.Item>
+            ))}
+          </Descriptions>
+        )}
+      </Card>
+    </div>
   );
 };
 
-export default Neo4jVisualization;
+export default Neo4jVisualization; // 导出组件

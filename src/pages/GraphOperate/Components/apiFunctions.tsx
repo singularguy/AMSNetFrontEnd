@@ -19,9 +19,11 @@ const createNode = async (node: API.NodeCreateRequest) => {
     await createNodeUsingPost(node);
     message.success('节点创建成功');
     console.log('Node created');
+    return true;
   } catch (error) {
     message.error(`节点创建失败: ${error.message}`);
     console.error(error);
+    return false;
   }
 };
 

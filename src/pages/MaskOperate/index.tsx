@@ -1,77 +1,134 @@
 import React, { useState, useRef, useEffect } from "react";
+import "./Styles/MaskOperate.css"; // 引入样式文件
+import { categoryColors } from "./Styles/constants.js"; // 引入类别颜色映射
 
 const MaskOperate = () => {
-  const [folderName, setFolderName] = useState(""); // 文件夹名
-  const [images, setImages] = useState([]); // 存储图片列表
-  const [currentImageIndex, setCurrentImageIndex] = useState(0); // 当前显示的图片索引
-  const [currentCategory, setCurrentCategory] = useState("Category 1"); // 当前类别
-  const [lineWidth, setLineWidth] = useState(0.3); // 默认边框宽度
-  const [isDrawing, setIsDrawing] = useState(false); // 是否在绘制
-  const [startPosition, setStartPosition] = useState(null); // 起始点
-  const [imageBoxes, setImageBoxes] = useState({}); // 每张图片的框信息
+  // 状态管理
+  const [folderName, setFolderName] = useState(""); // 当前文件夹名称
+  const [images, setImages] = useState([]); // 图片列表
+  const [currentImageIndex, setCurrentImageIndex] = useState(0); // 当前图片索引
+  const [currentCategory, setCurrentCategory] = useState("Net 1"); // 当前选择的类别
+  const [lineWidth, setLineWidth] = useState(12); // 矩形宽度
+  const [isDrawing, setIsDrawing] = useState(false); // 是否在绘制矩形
+  const [startPosition, setStartPosition] = useState(null); // 绘制起始位置
+  const [isDrawingDiagonal, setIsDrawingDiagonal] = useState(false); // 是否在绘制斜线区域
+  const [diagonalPoints, setDiagonalPoints] = useState([]); // 斜线区域的两个点
+  const [imageBoxes, setImageBoxes] = useState({}); // 图片对应的标注框数据
   const canvasRef = useRef(null); // Canvas引用
+  const [isDeleting, setIsDeleting] = useState(false); // 是否处于删除模式
 
-  // 定义类别与颜色的映射
-  const categoryColors = {
-    "Category 1": "rgba(255, 0, 0, 0.3)", // 红色填充
-    "Category 2": "rgba(0, 255, 0, 0.3)", // 绿色填充
-    "Category 3": "rgba(0, 0, 255, 0.3)", // 蓝色填充
-  };
+  const categories = Object.keys(categoryColors);
 
-  // 获取当前图片的框数据
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'ArrowUp' || event.key === 'ArrowDown' || event.key === 'w' || event.key === 's') {
+        const currentIndex = categories.indexOf(currentCategory);
+        if (currentIndex === -1) return; // 当前类别不在列表中，不处理
+
+        let newIndex;
+        if (event.key === 'ArrowUp' || event.key === 'w') {
+          newIndex = (currentIndex - 1 + categories.length) % categories.length;
+        } else if (event.key === 'ArrowDown' || event.key === 's') {
+          newIndex = (currentIndex + 1) % categories.length;
+        }
+        setCurrentCategory(categories[newIndex]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [categories, currentCategory]);
+
+  // 当前图片和标注框数据
   const currentImage = images[currentImageIndex];
   const currentBoxes = imageBoxes[currentImage?.name] || [];
 
-  // 上传文件夹并解析
+  /**
+   * 处理文件夹上传
+   * @param {Event} e 上传事件
+   */
   const handleFolderUpload = (e) => {
     const files = Array.from(e.target.files);
-
-    // 提取文件夹名
-    const path = files[0]?.webkitRelativePath || "";
-    const folder = path.split("/")[0]; // 提取文件夹名称
+    const folder = extractFolderName(files[0]?.webkitRelativePath || "");
     setFolderName(folder);
 
-    // 筛选图片文件和 JSON 文件
-    const imageFiles = files.filter(
-      (file) => file.type === "image/jpeg" || file.type === "image/png"
-    );
-    const jsonFiles = files.filter((file) => file.name.endsWith(".json"));
+    const imageFiles = filterImageFiles(files);
+    const jsonFiles = filterJsonFiles(files);
 
-    // 对图片文件名进行数字逻辑排序
-    const sortedFiles = imageFiles.sort((a, b) =>
-      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })
-    );
+    const sortedImageUrls = sortImageFiles(imageFiles);
+    setImages(sortedImageUrls);
 
-    // 将图片文件转为URL列表
-    const imageUrls = sortedFiles.map((file) => ({
-      name: file.name,
-      url: URL.createObjectURL(file),
-    }));
+    initializeImageBoxes(sortedImageUrls);
 
-    setImages(imageUrls);
+    parseJsonFiles(jsonFiles);
+  };
 
-    // 初始化框数据
-    setImageBoxes((prev) =>
-      imageUrls.reduce((acc, img) => {
-        acc[img.name] = prev[img.name] || []; // 保留原来的框数据
-        return acc;
-      }, {})
-    );
+  /**
+   * 提取文件夹名称
+   * @param {string} path 文件路径
+   * @returns {string} 文件夹名称
+   */
+  const extractFolderName = (path) => {
+    return path.split("/")[0];
+  };
 
-    // 解析 JSON 文件
-    jsonFiles.forEach((jsonFile) => {
+  /**
+   * 筛选图片文件
+   * @param {File[]} files 文件列表
+   * @returns {File[]} 图片文件列表
+   */
+  const filterImageFiles = (files) => {
+    return files.filter(file => file.type.match(/image\/(jpeg|png)/));
+  };
+
+  /**
+   * 筛选JSON文件
+   * @param {File[]} files 文件列表
+   * @returns {File[]} JSON文件列表
+   */
+  const filterJsonFiles = (files) => {
+    return files.filter(file => file.name.endsWith(".json"));
+  };
+
+  /**
+   * 对图片文件进行排序
+   * @param {File[]} imageFiles 图片文件列表
+   * @returns {Object[]} 排序后的图片URL列表
+   */
+  const sortImageFiles = (imageFiles) => {
+    return imageFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }))
+      .map(file => ({ name: file.name, url: URL.createObjectURL(file) }));
+  };
+
+  /**
+   * 初始化图片对应的标注框数据
+   * @param {Object[]} imageUrls 图片URL列表
+   */
+  const initializeImageBoxes = (imageUrls) => {
+    setImageBoxes(prevBoxes => {
+      imageUrls.forEach(img => prevBoxes[img.name] = prevBoxes[img.name] || []);
+      return { ...prevBoxes };
+    });
+  };
+
+  /**
+   * 解析JSON文件并更新标注框数据
+   * @param {File[]} jsonFiles JSON文件列表
+   */
+  const parseJsonFiles = (jsonFiles) => {
+    jsonFiles.forEach(jsonFile => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const jsonData = JSON.parse(event.target.result);
-
-        // 将解析出的框数据添加到对应图片
-        const fileName = jsonFile.name.replace(".json", ".jpg"); // 假设 JSON 文件名和图片文件名匹配
-        if (imageUrls.some((img) => img.name === fileName)) {
-          setImageBoxes((prev) => ({
-            ...prev,
-            [fileName]: jsonData.map((box) => ({
+        const fileName = jsonFile.name.replace(".json", ".jpg");
+        if (images.some(img => img.name === fileName)) {
+          setImageBoxes(prevBoxes => ({
+            ...prevBoxes,
+            [fileName]: jsonData.map(box => ({
               ...box,
-              color: categoryColors[box.category] || "rgba(128, 128, 128, 0.3)", // 设置颜色
+              color: categoryColors[box.category] || "rgba(128, 128, 128, 0.3)",
             })),
           }));
         }
@@ -80,104 +137,355 @@ const MaskOperate = () => {
     });
   };
 
-  // 处理Canvas点击事件
+  /**
+   * 处理Canvas点击事件
+   * @param {Event} e 点击事件
+   */
   const handleCanvasClick = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
 
-    if (!isDrawing) {
-      // 第一次点击，记录起始点
+    if (isDeleting) {
+      deleteBoxByPoint(x, y);
+    } else if (isDrawingDiagonal) {
+      handleDiagonalDrawing(x, y);
+    } else if (isDrawing) {
+      handleRectangleDrawing(x, y);
+    } else {
       setStartPosition({ x, y });
       setIsDrawing(true);
-    } else {
-      // 第二次点击，绘制矩形框
-      const endPosition = { x, y };
-      const newBox = {
-        x: Math.min(startPosition.x, endPosition.x), // 矩形起点X
-        y: Math.min(startPosition.y, endPosition.y), // 矩形起点Y
-        width: Math.abs(endPosition.x - startPosition.x), // 矩形宽度
-        height: Math.abs(endPosition.y - startPosition.y), // 矩形高度
-        category: currentCategory,
-        color: categoryColors[currentCategory], // 填充颜色
-        lineWidth,
-      };
-
-      setImageBoxes((prev) => ({
-        ...prev,
-        [currentImage.name]: [...currentBoxes, newBox], // 保存到当前图片的框数据
-      }));
-      setIsDrawing(false); // 结束绘制
     }
   };
 
-  // 绘制Canvas内容
+  /**
+   * 删除点击点所在的标注框
+   * @param {number} x 点击点X坐标
+   * @param {number} y 点击点Y坐标
+   */
+  const deleteBoxByPoint = (x, y) => {
+    const boxToRemove = findBoxByPoint(x, y);
+    if (boxToRemove) {
+      setImageBoxes(prevBoxes => {
+        const newBoxes = { ...prevBoxes };
+        newBoxes[currentImage.name] = prevBoxes[currentImage.name].filter(box => box !== boxToRemove);
+        return newBoxes;
+      });
+      drawCanvas();
+    }
+  };
+
+  /**
+   * 处理斜线区域绘制
+   * @param {number} x 点击点X坐标
+   * @param {number} y 点击点Y坐标
+   */
+  const handleDiagonalDrawing = (x, y) => {
+    setDiagonalPoints(prevPoints => {
+      const newPoints = [...prevPoints, { x, y }];
+      if (newPoints.length === 2) {
+        drawDiagonalRegion(newPoints);
+        saveDiagonalRegion(newPoints);
+        setDiagonalPoints([]);
+        setIsDrawingDiagonal(false);
+      }
+      return newPoints;
+    });
+  };
+
+  /**
+   * 处理矩形绘制
+   * @param {number} x 点击点X坐标
+   * @param {number} y 点击点Y坐标
+   */
+  const handleRectangleDrawing = (x, y) => {
+    const endPosition = { x, y };
+    const { boxX, boxY, boxWidth, boxHeight } = calculateBoxDimensions(startPosition, endPosition);
+
+    const newBox = createBox(boxX, boxY, boxWidth, boxHeight);
+    setImageBoxes(prevBoxes => ({
+      ...prevBoxes,
+      [currentImage.name]: [...prevBoxes[currentImage.name], newBox],
+    }));
+    drawCanvas();
+    setIsDrawing(false);
+    setStartPosition(null);
+  };
+
+  /**
+   * 计算矩形的尺寸
+   * @param {Object} startPosition 起始点
+   * @param {Object} endPosition 结束点
+   * @returns {Object} 矩形的X、Y、宽度和高度
+   */
+  const calculateBoxDimensions = (startPosition, endPosition) => {
+    const dx = Math.abs(endPosition.x - startPosition.x);
+    const dy = Math.abs(endPosition.y - startPosition.y);
+
+    let boxX, boxY, boxWidth, boxHeight;
+
+    if (dy < 5) {
+      boxX = Math.min(startPosition.x, endPosition.x);
+      boxY = (startPosition.y + endPosition.y) / 2 - lineWidth / 2;
+      boxWidth = dx;
+      boxHeight = lineWidth;
+    } else if (dx < 5) {
+      boxX = (startPosition.x + endPosition.x) / 2 - lineWidth / 2;
+      boxY = Math.min(startPosition.y, endPosition.y);
+      boxWidth = lineWidth;
+      boxHeight = dy;
+    } else {
+      boxX = Math.min(startPosition.x, endPosition.x);
+      boxY = Math.min(startPosition.y, endPosition.y);
+      boxWidth = dx;
+      boxHeight = dy;
+    }
+
+    return { boxX, boxY, boxWidth, boxHeight };
+  };
+
+  /**
+   * 创建新的标注框对象
+   * @param {number} x X坐标
+   * @param {number} y Y坐标
+   * @param {number} width 宽度
+   * @param {number} height 高度
+   * @returns {Object} 标注框对象
+   */
+  const createBox = (x, y, width, height) => {
+    return {
+      x: parseFloat(x.toFixed(2)),
+      y: parseFloat(y.toFixed(2)),
+      width: parseFloat(width.toFixed(2)),
+      height: parseFloat(height.toFixed(2)),
+      category: currentCategory,
+      color: categoryColors[currentCategory],
+      lineWidth: 0.3,
+    };
+  };
+
+  /**
+   * 查找点击点所在的标注框
+   * @param {number} x 点击点X坐标
+   * @param {number} y 点击点Y坐标
+   * @returns {Object|null} 找到的标注框或null
+   */
+  const findBoxByPoint = (x, y) => {
+    for (let i = currentBoxes.length - 1; i >= 0; i--) {
+      const box = currentBoxes[i];
+      if (box.points && box.points.length === 2) {
+        if (isPointInRotatedRect(x, y, box.points[0], box.points[1], lineWidth)) {
+          return box;
+        }
+      } else {
+        if (isPointInBox(x, y, box)) {
+          return box;
+        }
+      }
+    }
+    return null;
+  };
+
+  /**
+   * 检查点是否在旋转的矩形内
+   * @param {number} x 点X坐标
+   * @param {number} y 点Y坐标
+   * @param {Object} p1 点1
+   * @param {Object} p2 点2
+   * @param {number} height 矩形高度
+   * @returns {boolean} 是否在旋转矩形内
+   */
+  const isPointInRotatedRect = (x, y, p1, p2, height) => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const rot = Math.atan2(dy, dx);
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+
+    const px = x - (p1.x + p2.x) / 2;
+    const py = y - (p1.y + p2.y) / 2;
+    const xr = px * cos + py * sin;
+    const yr = -px * sin + py * cos;
+
+    if (Math.abs(xr) <= len / 2 + 1 && Math.abs(yr) <= height / 2 + 1) {
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * 检查点是否在矩形框内
+   * @param {number} x 点X坐标
+   * @param {number} y 点Y坐标
+   * @param {Object} box 标注框对象
+   * @returns {boolean} 是否在矩形框内
+   */
+  const isPointInBox = (x, y, box) => {
+    return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+  };
+
+  /**
+   * 绘制斜线区域
+   * @param {Object[]} points 斜线区域的两个点
+   */
+  const drawDiagonalRegion = (points) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const { angle, width, height, centerX, centerY } = calculateRotationParams(points);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.rect(-width / 2, -height / 2, width, height);
+    ctx.fillStyle = categoryColors[currentCategory] || "rgba(128, 128, 128, 0.3)";
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  /**
+   * 计算旋转参数
+   * @param {Object[]} points 斜线区域的两个点
+   * @returns {Object} 旋转角度、宽度、高度、中心X、中心Y
+   */
+  const calculateRotationParams = (points) => {
+    const dx = points[1].x - points[0].x;
+    const dy = points[1].y - points[0].y;
+    const angle = Math.atan2(dy, dx);
+    const width = Math.sqrt(dx * dx + dy * dy);
+    const height = lineWidth;
+    const centerX = (points[0].x + points[1].x) / 2;
+    const centerY = (points[0].y + points[1].y) / 2;
+    return { angle, width, height, centerX, centerY };
+  };
+
+  /**
+   * 保存斜线区域到标注框数据
+   * @param {Object[]} points 斜线区域的两个点
+   */
+  const saveDiagonalRegion = (points) => {
+    const newRegion = {
+      points: points.map(point => ({ x: point.x, y: point.y })),
+      category: currentCategory,
+      color: categoryColors[currentCategory],
+    };
+    setImageBoxes(prevBoxes => ({
+      ...prevBoxes,
+      [currentImage.name]: [...prevBoxes[currentImage.name], newRegion],
+    }));
+    drawCanvas();
+  };
+
+  /**
+   * 绘制Canvas内容
+   */
   const drawCanvas = () => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-
-    // 清空Canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 绘制当前图片
     if (currentImage) {
       const img = new Image();
       img.src = currentImage.url;
       img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        // 绘制当前图片的框
-        currentBoxes.forEach((box) => {
-          ctx.fillStyle = box.color; // 设置填充颜色
-          ctx.strokeStyle = "black"; // 边框颜色
-          ctx.lineWidth = box.lineWidth; // 边框宽度
-
-          ctx.fillRect(box.x, box.y, box.width, box.height); // 填充矩形
-          ctx.strokeRect(box.x, box.y, box.width, box.height); // 绘制矩形边框
+        currentBoxes.forEach(box => {
+          if (box.points && box.points.length === 2) {
+            drawDiagonalRegionWithColor(box);
+          } else {
+            drawRectangleBox(box);
+          }
         });
       };
     }
   };
 
+  /**
+   * 绘制斜线区域，并使用对应的颜色
+   * @param {Object} box 标注框对象
+   */
+  const drawDiagonalRegionWithColor = (box) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const { angle, width, height, centerX, centerY } = calculateRotationParams(box.points);
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.rect(-width / 2, -height / 2, width, height);
+    ctx.fillStyle = box.color || "rgba(128, 128, 128, 0.3)";
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  };
+
+  /**
+   * 绘制矩形框
+   * @param {Object} box 标注框对象
+   */
+  const drawRectangleBox = (box) => {
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.fillStyle = box.color;
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = box.lineWidth || 1;
+    ctx.fillRect(box.x, box.y, box.width, box.height);
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+  };
+
   // 更新Canvas内容
   useEffect(() => {
     drawCanvas();
-  }, [currentImage, currentBoxes]);
+  }, [currentImage, currentBoxes, lineWidth, diagonalPoints]);
 
-  // 切换到上一张图片
+  /**
+   * 切换到上一张图片
+   */
   const handlePreviousImage = () => {
     if (currentImageIndex > 0) {
-      setCurrentImageIndex((prevIndex) => prevIndex - 1);
+      setCurrentImageIndex(prevIndex => prevIndex - 1);
     }
   };
 
-  // 切换到下一张图片
+  /**
+   * 切换到下一张图片
+   */
   const handleNextImage = () => {
     if (currentImageIndex < images.length - 1) {
-      setCurrentImageIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(prevIndex => prevIndex + 1);
     }
   };
 
-  // 撤回功能
+  /**
+   * 撤回最后一个标注框
+   */
   const handleUndo = () => {
-    setImageBoxes((prev) => ({
-      ...prev,
-      [currentImage.name]: currentBoxes.slice(0, -1), // 删除最后一个框
+    setImageBoxes(prevBoxes => ({
+      ...prevBoxes,
+      [currentImage.name]: currentBoxes.slice(0, -1),
     }));
+    drawCanvas();
   };
 
-  // 导出位置信息为 JSON 文件
+  /**
+   * 导出标注框数据为JSON文件
+   */
   const handleExport = () => {
-    // 按类别分组
     const groupedBoxes = currentBoxes.reduce((acc, box) => {
       if (!acc[box.category]) acc[box.category] = [];
-      acc[box.category].push({
-        x: box.x,
-        y: box.y,
-        width: box.width,
-        height: box.height,
-      });
+      if (box.points) {
+        acc[box.category].push({ points: box.points.map(point => ({ x: point.x, y: point.y })) });
+      } else {
+        acc[box.category].push({ x: box.x, y: box.y, width: box.width, height: box.height });
+      }
       return acc;
     }, {});
 
@@ -185,57 +493,93 @@ const MaskOperate = () => {
     const blob = new Blob([jsonContent], { type: "application/json" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${currentImage.name.split(".")[0]}.json`; // 文件名为图片名
+    link.download = `${currentImage.name.split(".")[0]}.json`;
     link.click();
   };
 
+  /**
+   * 切换删除模式
+   */
+  const handleDeleteMode = () => {
+    setIsDeleting(prev => !prev);
+    if (isDeleting) {
+      setIsDrawing(false);
+      setIsDrawingDiagonal(false);
+      setDiagonalPoints([]);
+    }
+  };
+
   return (
-    <div style={{ display: "flex", padding: "20px" }}>
+    <div className="container">
       {/* 左侧控制区域 */}
-      <div style={{ width: "30%", paddingRight: "20px" }}>
+      <div className="left-panel">
         <h3>上传文件夹</h3>
         <input
           type="file"
           webkitdirectory="true"
           multiple
           onChange={handleFolderUpload}
+          className="file-input"
         />
         {folderName && <p>文件夹名：{folderName}</p>}
         <h3>选择类别</h3>
         <select
           value={currentCategory}
-          onChange={(e) => setCurrentCategory(e.target.value)}
+          onChange={e => setCurrentCategory(e.target.value)}
+          className="category-select-with-color"
         >
-          <option value="Category 1">Category 1</option>
-          <option value="Category 2">Category 2</option>
-          <option value="Category 3">Category 3</option>
+          {Object.keys(categoryColors).map(category => (
+            <option
+              key={category}
+              value={category}
+              style={{
+                background: categoryColors[category],
+                color: "white",
+                paddingLeft: "1.5em",
+              }}
+            >
+              {category}
+            </option>
+          ))}
         </select>
-        <h3>设置边框宽度</h3>
+        <h3>设置矩形宽度</h3>
         <input
           type="number"
           value={lineWidth}
-          onChange={(e) => setLineWidth(parseFloat(e.target.value))}
+          onChange={e => setLineWidth(parseFloat(e.target.value))}
           min={0.1}
-          step={0.1}  // 允许用户以0.1为步长输入小数
+          step={0.1}
+          className="line-width-input"
         />
-        <button onClick={handleUndo} style={{ marginTop: "10px" }}>
-          撤回
+        <button onClick={handleUndo} className="action-button">撤回</button>
+        <button onClick={handleExport} className="action-button">导出JSON</button>
+        <button
+          onClick={() => setIsDrawingDiagonal(prev => !prev)}
+          className={`action-button ${isDrawingDiagonal ? 'active' : ''}`}
+        >
+          斜线标注
         </button>
-        <button onClick={handleExport} style={{ marginTop: "10px" }}>
-          导出JSON
+        <button
+          onClick={handleDeleteMode}
+          className={`action-button ${isDeleting ? 'active' : ''}`}
+        >
+          删除模式
         </button>
       </div>
-
       {/* 中间Canvas绘图区 */}
-      <div style={{ flex: 1 }}>
-        <div style={{ marginBottom: "10px" }}>
-          <button onClick={handlePreviousImage} disabled={currentImageIndex === 0}>
+      <div className="center-panel">
+        <div className="button-group">
+          <button
+            onClick={handlePreviousImage}
+            disabled={currentImageIndex === 0}
+            className="nav-button"
+          >
             上一张
           </button>
           <button
             onClick={handleNextImage}
             disabled={currentImageIndex === images.length - 1}
-            style={{ marginLeft: "10px" }}
+            className="nav-button"
           >
             下一张
           </button>
@@ -245,28 +589,27 @@ const MaskOperate = () => {
           ref={canvasRef}
           width={800}
           height={600}
-          style={{ border: "1px solid black" }}
+          className="drawing-canvas"
           onClick={handleCanvasClick}
         ></canvas>
       </div>
-
       {/* 右侧显示区域 */}
-      <div style={{ width: "30%", paddingLeft: "20px" }}>
+      <div className="right-panel">
         <h3>已绘制框信息</h3>
-        <ul>
+        <ul className="box-list">
           {currentBoxes.map((box, index) => (
-            <li key={index} style={{ display: "flex", alignItems: "center" }}>
+            <li key={index} className="box-item">
               <div
-                style={{
-                  width: "20px",
-                  height: "20px",
-                  backgroundColor: box.color,
-                  marginRight: "10px",
-                }}
+                className="color-block"
+                style={{ backgroundColor: box.color }}
               ></div>
               <span>
-                {box.category}: ({box.x.toFixed(0)}, {box.y.toFixed(0)}) -{" "}
-                {box.width.toFixed(0)}x{box.height.toFixed(0)}
+                {box.category}:{" "}
+                {box.points ? (
+                  `斜线区域 (${box.points.map(point => `(${point.x.toFixed(2)}, ${point.y.toFixed(2)})`).join(', ')})`
+                ) : (
+                  `(${box.x.toFixed(2)}, ${box.y.toFixed(2)}) - ${box.width.toFixed(2)}x${box.height.toFixed(2)}`
+                )}
               </span>
             </li>
           ))}
