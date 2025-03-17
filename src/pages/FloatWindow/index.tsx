@@ -55,48 +55,65 @@ const getFileType = (fileType: string) => {
 
 const FloatWindow: React.FC = () => {
   const [isMinimized, setIsMinimized] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef({ x: 0, y: 0 });
-  const ref = useRef<HTMLDivElement>(null);
-  const titleRef = useRef<HTMLDivElement>(null);
-
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const windowRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [initialX, setInitialX] = useState(0);
+  const [initialY, setInitialY] = useState(0);
+  const [offsetX, setOffsetX] = useState(0);
+  const [offsetY, setOffsetY] = useState(0);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!titleRef.current?.contains(e.target as HTMLElement)) return;
-    setIsDragging(true);
-    dragStartPos.current = {
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
+  useEffect(() => {
+    const handleMouseDown = (e: MouseEvent) => {
+      if (headerRef.current) {
+        setIsDragging(true);
+        setInitialX(e.clientX);
+        setInitialY(e.clientY);
+        const rect = windowRef.current?.getBoundingClientRect();
+        if (rect) {
+          setOffsetX(rect.left);
+          setOffsetY(rect.top);
+        }
+      }
     };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging && windowRef.current) {
+        const dx = e.clientX - initialX;
+        const dy = e.clientY - initialY;
+        windowRef.current.style.left = `${offsetX + dx}px`;
+        windowRef.current.style.top = `${offsetY + dy}px`;
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    const header = headerRef.current;
+    if (header) {
+      header.addEventListener('mousedown', handleMouseDown);
+    }
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging || !ref.current) return;
-    const newX = e.clientX - dragStartPos.current.x;
-    const newY = e.clientY - dragStartPos.current.y;
-    const { innerWidth, innerHeight } = window;
-    const clampedX = Math.max(0, Math.min(newX, innerWidth - ref.current.offsetWidth));
-    const clampedY = Math.max(0, Math.min(newY, innerHeight - ref.current.offsetHeight));
-    setPosition({ x: clampedX, y: clampedY });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-  };
+    return () => {
+      if (header) {
+        header.removeEventListener('mousedown', handleMouseDown);
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, initialX, initialY, offsetX, offsetY]);
 
   const convertFileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -361,8 +378,6 @@ const FloatWindow: React.FC = () => {
   };
 
   const windowStyle: React.CSSProperties = {
-    transform: `translate(${position.x}px, ${position.y}px)`,
-    cursor: isDragging ? 'grabbing' : 'grab',
     position: 'fixed',
     right: '20px',
     bottom: '20px',
@@ -377,51 +392,37 @@ const FloatWindow: React.FC = () => {
   };
 
   return (
-    <div ref={ref} className="float-window" style={windowStyle}>
-      <div ref={titleRef} className="window-header" onMouseDown={handleMouseDown}>
-        <span className="window-title">AI 对话助手(只支持单个图像)</span>
-        <div className="header-buttons">
-          <Button
-            className="window-control-button"
-            icon={<DeleteOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleClearContext();
-            }}
-            type="text"
-            shape="circle"
-            title="清空上下文"
-          />
-          <Button
-            className="window-control-button"
-            icon={isMinimized ? <UpOutlined /> : <DownOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsMinimized(!isMinimized);
-            }}
-            type="text"
-            shape="circle"
-            title={isMinimized ? '展开窗口' : '最小化窗口'}
-          />
-        </div>
-      </div>
-
-      {isMinimized ? (
-        <div className="minimized-content">
-          <MessageOutlined className="minimized-icon" />
-          <Button
-            className="window-control-button"
-            icon={<UpOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsMinimized(!isMinimized);
-            }}
-            type="text"
-            shape="circle"
-          />
-        </div>
-      ) : (
+    <div className="float-window" style={windowStyle} ref={windowRef}>
+      {!isMinimized && (
         <>
+          <div className="window-header" ref={headerRef}>
+            <span className="window-title">AI 对话助手(只支持单个图像)</span>
+            <div className="header-buttons">
+              <Button
+                className="window-control-button"
+                icon={<DeleteOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClearContext();
+                }}
+                type="text"
+                shape="circle"
+                title="清空上下文"
+              />
+              <Button
+                className="window-control-button"
+                icon={<DownOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMinimized(true);
+                }}
+                type="text"
+                shape="circle"
+                title="最小化窗口"
+              />
+            </div>
+          </div>
+
           {messages.length > 0 && (
             <div className="clear-context-hint">
               <Button
@@ -442,15 +443,15 @@ const FloatWindow: React.FC = () => {
               return (
                 <div key={index} className={`message-bubble ${msg.role}`}>
                   <div className="message-header">
-                    <span className="message-role">
-                      {msg.role === 'user' ? '👤 您' : '🤖 助手'}
-                    </span>
+                                        <span className="message-role">
+                                            {msg.role === 'user' ? '👤 您' : '🤖 助手'}
+                                        </span>
                     <span className="message-time">
-                      {new Date().toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
+                                            {new Date().toLocaleTimeString([], {
+                                              hour: '2-digit',
+                                              minute: '2-digit'
+                                            })}
+                                        </span>
                   </div>
 
                   {msg.files?.map((file, i) => (
@@ -566,6 +567,15 @@ const FloatWindow: React.FC = () => {
             )}
           </div>
         </>
+      )}
+
+      {isMinimized && (
+        <div
+          className="minimized-content"
+          onDoubleClick={() => setIsMinimized(false)}
+        >
+          <MessageOutlined className="minimized-icon" />
+        </div>
       )}
     </div>
   );
